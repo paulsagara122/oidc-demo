@@ -1,6 +1,6 @@
 package oidc.service;
 
-import com.auth0.jwt.interfaces.DecodedJWT;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
@@ -16,6 +16,15 @@ public interface OidcService {
      * @throws IOException Signals that an I/O exception of some sort has occurred.
      */
     public void redirectIfLoginRequired(HttpServletRequest request, HttpServletResponse response) throws IOException;
+
+    /**
+     * Refresh the access token to get a new access token.
+     *
+     * @param request      the request object.
+     * @param response     the response object.
+     * @throws IOException Signals that an I/O exception of some sort has occurred.
+     */
+    public void refreshAccessTokenIfNeeded(HttpServletRequest request, HttpServletResponse response) throws IOException;
 
     /**
      * Determines if a user needs to login.
@@ -44,4 +53,13 @@ public interface OidcService {
      * @throws IOException              Signals that an I/O exception of some sort has occurred.
      */
     public String introspect(String accessToken) throws IOException;
+
+    /**
+     * Refresh the access token to get a new access token.
+     *
+     * @param request      the request object.
+     * @param token      the oidc token.
+     * @throws IOException Signals that an I/O exception of some sort has occurred.
+     */
+    public void saveTokenToSession(HttpServletRequest request, String token) throws JsonProcessingException;
 }

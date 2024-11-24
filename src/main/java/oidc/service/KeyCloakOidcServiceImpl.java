@@ -1,6 +1,10 @@
 package oidc.service;
 
+import com.auth0.jwt.JWT;
 import com.auth0.jwt.interfaces.DecodedJWT;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import oidc.util.OidcUtil;
@@ -41,13 +45,14 @@ public class KeyCloakOidcServiceImpl implements OidcService {
     @Value("${keyclock.oidc.auth.scope}")
     private String scope;
 
-    @Value("${keycloak.oidc.auth.grant_type}")
-    private String grantType;
-
     @Value("${keycloak.oidc.auth.introspect.endpoint}")
     private String introspectEndpoint;
 
     private static final MediaType X_WWW_FORM_URLENCODED = MediaType.parse("application/x-www-form-urlencoded");
+
+    final private static String ACCESS_TOKEN_GRANT_TYPE = "authorization_code";
+
+    final private static String REFRESH_TOKEN_GRANT_TYPE = "refresh_token";
 
     @Override
     public void redirectIfLoginRequired(final HttpServletRequest request, final HttpServletResponse response) throws IOException {
@@ -58,7 +63,53 @@ public class KeyCloakOidcServiceImpl implements OidcService {
             System.out.println("=== User is not logged in, redirecting: " + redirectUrl);
 
             response.sendRedirect(redirectUrl);
+        } else {
+            refreshAccessTokenIfNeeded(request, response);
         }
+    }
+
+    @Override
+    public void refreshAccessTokenIfNeeded(final HttpServletRequest request, final HttpServletResponse response) throws IOException {
+        final DecodedJWT accessTokenJwt = (DecodedJWT) request.getSession().getAttribute("access_token");
+        if (accessTokenJwt != null) {
+            long expiresAt = accessTokenJwt.getClaim("exp").asInt();
+            // Convert to milliseconds
+            long expiresAtMillis = expiresAt * 1000L;
+            long currTime = System.currentTimeMillis();
+            if (currTime >= expiresAtMillis) {
+                System.out.println("===> Token expired! Need a new token.");
+                final DecodedJWT refreshTokenJwt = (DecodedJWT) request.getSession().getAttribute("refresh_token");
+                String token = refreshAccessToken(refreshTokenJwt.getToken());
+                saveTokenToSession(request, token);
+            }
+        }
+    }
+
+    private String refreshAccessToken(final String refreshToken) throws IOException {
+        String token = null;
+
+        final String basicAuthString = clientId + ":" + clientSecret;
+
+        final String basicAuth = Base64.getEncoder().encodeToString(basicAuthString.getBytes(StandardCharsets.UTF_8));
+        final RequestBody body = RequestBody.create(X_WWW_FORM_URLENCODED,
+                String.format("grant_type=%s&refresh_token=%s",
+                        REFRESH_TOKEN_GRANT_TYPE, refreshToken));
+
+        // Don't ever do this in production because it allows any certificate!
+        final OkHttpClient client = OidcUtil.getUnsafeOkHttpClient();
+        final Request request = new Request.Builder()
+                .url(tokenEndpoint)
+                .post(body)
+                .addHeader("Authorization", "Basic " + basicAuth)
+                .addHeader("Content-Type", "application/x-www-form-urlencoded")
+                .build();
+
+        final Response response = client.newCall(request).execute();
+
+        if (response.isSuccessful()) {
+            token = response.body().string();
+        }
+        return token;
     }
 
     @Override
@@ -78,7 +129,7 @@ public class KeyCloakOidcServiceImpl implements OidcService {
         final String basicAuth = Base64.getEncoder().encodeToString(basicAuthString.getBytes(StandardCharsets.UTF_8));
         final RequestBody body = RequestBody.create(X_WWW_FORM_URLENCODED,
                 String.format("grant_type=%s&code=%s&redirect_uri=%s&scope=%s",
-                grantType, authorizationCode, redirectUri, scope));
+                        ACCESS_TOKEN_GRANT_TYPE, authorizationCode, redirectUri, scope));
 
         // Don't ever do this in production because it allows any certificate!
         final OkHttpClient client = OidcUtil.getUnsafeOkHttpClient();
@@ -126,6 +177,42 @@ public class KeyCloakOidcServiceImpl implements OidcService {
 
         return user;
 
+
+    }
+
+    @Override
+    public void saveTokenToSession(final HttpServletRequest request, final String token) throws JsonProcessingException {
+        // Parse the token
+        final ObjectMapper mapper = new ObjectMapper();
+        final JsonNode jsonToken = mapper.readTree(token);
+
+        final JsonNode accessToken = jsonToken.get("access_token");
+        final JsonNode idToken = jsonToken.get("id_token");
+        final JsonNode refreshToken = jsonToken.get("refresh_token");
+
+        System.out.println();
+        System.out.println("=== Access Token: " + accessToken.textValue());
+        System.out.println();
+        System.out.println("=== ID Token: " + idToken.textValue());
+
+        final DecodedJWT accessJwt = JWT.decode(accessToken.asText());
+        final DecodedJWT idJwt = JWT.decode(idToken.asText());
+        final DecodedJWT refreshJwt = JWT.decode(refreshToken.asText());
+
+        request.getSession().setAttribute("access_token", accessJwt);
+        request.getSession().setAttribute("id_token", idJwt);
+        request.getSession().setAttribute("refresh_token", refreshJwt);
+
+        // Extract user information
+        String subject = idJwt.getClaim("sub").asString();
+        String name = idJwt.getClaim("name").asString();
+        String preferredUsername = idJwt.getClaim("preferred_username").asString();
+        String email = idJwt.getClaim("email").asString();
+
+        System.out.println("Subject: " + subject);
+        System.out.println("Name: " + name);
+        System.out.println("Preferred Username: " + preferredUsername);
+        System.out.println("Email: " + email);
 
     }
 
