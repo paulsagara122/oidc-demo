@@ -39,10 +39,10 @@ public class OidcController {
 
         //add user details to home page
         if (request.getSession() != null) {
-            model.addAttribute("name", request.getSession().getAttribute("name"));
-            model.addAttribute("username", request.getSession().getAttribute("username"));
-            model.addAttribute("email", request.getSession().getAttribute("email"));
-            model.addAttribute("status", request.getSession().getAttribute("status"));
+            final DecodedJWT idJwt = (DecodedJWT) request.getSession().getAttribute("id_token");
+            if (idJwt != null) {
+                model.addAttribute("username", idJwt.getClaim("preferred_username").asString());
+            }
         }
         return "index";
     }
@@ -97,6 +97,18 @@ public class OidcController {
         request.getSession().setAttribute("id_token", idJwt);
         request.getSession().setAttribute("refresh_token", refreshToken.textValue());
 
+        // Extract user information
+        String subject = idJwt.getClaim("sub").asString();
+        String name = idJwt.getClaim("name").asString();
+        String preferredUsername = idJwt.getClaim("preferred_username").asString();
+        String email = idJwt.getClaim("email").asString();
+
+        System.out.println("Subject: " + subject);
+        System.out.println("Name: " + name);
+        System.out.println("Preferred Username: " + preferredUsername);
+        System.out.println("Email: " + email);
+
+        /*
         //introspect
         final String rawUser = oidcService.introspect(accessJwt.getToken());
         final JsonNode user = mapper.readTree(rawUser);
@@ -110,6 +122,7 @@ public class OidcController {
         request.getSession().setAttribute("email", email.textValue());
         request.getSession().setAttribute("username", username.textValue());
         request.getSession().setAttribute("status", status.asBoolean() ? "Active" : "Inactive");
+        */
 
         if (!state.isEmpty()) {
             // We have a state, redirect there
