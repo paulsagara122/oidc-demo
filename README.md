@@ -31,6 +31,9 @@ After setting up Jave and Keycloak, you can run the application using the follow
 ```bash
 java -jar .\target\oidc-demo-0.0.1-SNAPSHOT.jar
 ```
+## Learn More About OIDC
+For a deeper dive into OpenID Connect (OIDC), check out this [Medium blog post](https://medium.com/@paulsagara122/understanding-openid-connect-oidc-a-practical-guide-to-the-flow-db05f3e9eaf5) for more information.
+
 # Contributors
 * [Sagar Paul](https://github.com/paulsagara122)
 
